@@ -1,0 +1,118 @@
+#include "SIM900.h"
+#include <SoftwareSerial.h>
+#include "inetGSM.h"
+
+InetGSM inet;
+
+char *data;
+char msg[50];
+boolean started=false;
+
+int temp = 0;
+int Aktuator = 0;
+char numStr[10];
+char inTempStr[8];
+char inAktStr[8];
+
+//convert function int to char
+void formatNum(int num, boolean multiply, char *numStrPtr) {
+  boolean neg = (num < 0);
+  char *strPtr = numStrPtr;
+
+  for(int i=0; i<8; i++) 
+     *strPtr++ = '\0';
+    
+  strPtr = numStrPtr;
+  
+  if(neg) {
+    num *= -1;
+    *strPtr++ = '-';
+  }
+  if(multiply) {
+    // First part before decimal point
+    itoa(num/100, strPtr, 10);
+
+    int pos = strlen(numStrPtr);
+    strPtr = numStrPtr + pos;
+    *strPtr++ = '.';
+    int decimal = num % 100;
+    if(decimal > 10) {
+      itoa(decimal, strPtr, 10);
+    } else {
+      *strPtr++ = '0';
+      itoa(decimal, strPtr, 10);
+    }
+  } else {
+    itoa(num, strPtr, 10);
+  }
+}
+
+void connection(){
+//Start configuration of shield with baudrate.
+  //For http uses is raccomanded to use 4800 or slower.
+  if (gsm.begin(2400)){
+    Serial.println("\nstatus=READY");
+    started=true; 
+  }
+  else Serial.println("\nstatus=IDLE");
+}
+
+void SendData(){
+if(started){
+    if (inet.attachGPRS("3data", "3data", "3data"))
+    //if (inet.attachGPRS("indosatgprs", "indosat", "indosat"))
+      Serial.println("status=ATTACHED");
+    else Serial.println("status=ERROR");
+    delay(1000);
+    
+    //Read IP address.
+    gsm.SimpleWriteln("AT+CIFSR");
+    delay(1000);
+
+    //Read until serial buffer is empty.
+    gsm.WhileSimpleRead();
+    Serial.println(data);
+    //TCP Client GET, send a GET request to the server and
+    //save the reply.
+    //inet.httpGET("www.datalogger.16mb.com", 80, data, msg, 50);
+    inet.httpGET("www.datalogger.comli.com", 80, data, inTempStr, 50);
+    Serial.println(data);
+    Serial.println(inTempStr);    
+    Serial.println("Done.");
+  }
+  else Serial.println("\nstatus=Error Send Data");
+}
+void setup() 
+{
+  //Serial connection.
+  Serial.begin(9600);
+  pinMode(13, OUTPUT);
+  Serial.println("...GSM/GPRS Shield Connecting..."); 
+   
+}
+
+void loop() 
+{
+  temp = (int)((4.99*(analogRead(0))*100/1024)*100);
+  formatNum(temp, true, inTempStr);
+  Serial.print("Status Aktuator: ");
+  if (temp > 3000){ 
+    digitalWrite(13, HIGH);
+    Serial.println("Nyala");
+  }
+  else { 
+    digitalWrite(13, LOW);
+    Serial.println("Mati");
+  }
+  //append data in char pointer
+  data = "/readData4.php?inTempStr=";
+  strcat(data, inTempStr);
+  Serial.println(data);
+  Serial.println(inTempStr);
+  connection();
+  SendData();
+  char *data = NULL;
+  char *inTempStr = NULL;
+  Serial.flush();
+  delay(60000);
+}
